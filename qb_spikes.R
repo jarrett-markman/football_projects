@@ -1,19 +1,16 @@
-# download libraries and data (i already have the packages loaded into my Rstudio)
+# Load libraries
 library(tidyverse)
 library(ggrepel)
 library(ggimage)
 library(gt)
 library(caret)
 library(nflfastR)
-options(scipen = 9999)
-nflreadr::.clear_cache()
-# now i want to create a data frame for all quarterback spikes in the fourth quarter in a one-score game
-# i can use the pipe function as well as filter() commands to create the data frame
+# Create a data frame for all quarterback spikes in the fourth quarter in a one-score game
 fourth_quarter_spikes <- load_pbp(2012:2021) %>%
   filter(qb_spike == 1) %>%
   filter(qtr == 4) %>%
   filter(score_differential >=-8)
-# in addition to fourth quarter spikes, i wanted to also look at 2nd quarter spikes, not including the score differential
+# Look at 2nd quarter spikes, not including the score differential
 second_quarter_spikes <- load_pbp(2012:2021) %>%
   filter(qb_spike == 1) %>%
   filter(qtr == 2)
@@ -71,7 +68,7 @@ second_quarter_spikes %>%
        caption = "Jarrett Markman | Sports Analytics") +
   theme(plot.title = element_text(size = 12, face = "bold", hjust = 0.5))
 # like the fourth quarter data a lot of it's clustered around the 0 to -0.5 and 0 to -0.05 range for epa and wpa
-# now i just want to get a feel for the data surrounding each spike, looking at other variables like seconds remaining, yard line, field goal and touchdown probability, and score differential (along with epa and wpa)
+# Investigate data
 fourth_quarter_spikes %>% 
   select(posteam, defteam, epa, time, yrdln, score_differential, wpa, fg_prob) %>%
   filter(score_differential >= -3) %>%
@@ -88,8 +85,7 @@ fourth_quarter_spikes %>%
   select(posteam, defteam, epa, time, yrdln, score_differential, wpa, td_prob) %>%
   filter(score_differential <= -4 & score_differential >= -8) %>%
   arrange(-td_prob)
-# after looking through the data, it seems that epa applies to real game situations better than wpa
-# i also want to make a plot for time and epa in field goal score games
+# EPA appears to apply to real game situations better than wpa
 fourth_quarter_spikes %>%
   filter(score_differential >= -3) %>%
   ggplot(aes(x=epa, y=time)) +
@@ -110,7 +106,8 @@ fourth_quarter_spikes %>%
        title = "Spike EPA and Time in a touchdown-score game",
        caption = "Jarrett Markman | Sports Analytics") +
   theme(plot.title = element_text(size = 8, face = 'bold', hjust = 0.5))
-# with teams in need of a touchdown it isn't nearly that effective to spike the ball for one last play with little time left, so a majority of the data consists of a negative epa
+# with teams in need of a touchdown it isn't nearly that effective to spike the ball for one last play with little time left, 
+# so a majority of the data consists of a negative epa
 # after looking at the two graphs i want to look at spikes and how effective they are for epa in both touchdown and field-goal "games"
 # how does epa apply with high field goal and touchdown probabilities?
 fourth_quarter_spikes %>%
@@ -153,7 +150,6 @@ td_4q_spikes %>%
 cor(td_4q_spikes$epa, td_4q_spikes$td_prob)
 # r value of ~ -.4 meaning that spikes in a touchdown game really shouldn't be used.
 # maybe certain teams are better at using quarterback spikes?
-# i can use the join command with teams_colors_logos which is built in the nflfastR functions
 fourth_quarter_spikes <- fourth_quarter_spikes %>%
   left_join(teams_colors_logos, by = c("posteam" = "team_abbr"))
 second_quarter_spikes <- second_quarter_spikes %>%
@@ -180,27 +176,24 @@ second_quarter_spikes %>%
        caption = "Jarrett Markman | Sports Analytics") +
   theme(plot.title = element_text(size = 12, face = "bold", hjust = 0.5))
 # looking the graphs, it's hard to judge teams based on all of their spikes
-# given, i decide to find the average epa and wpa per spike for each team
+# Find average EPA & WPA on a spike for each team
 avg_4q_spikes <- fourth_quarter_spikes %>%
   select(posteam, epa, wpa) %>%
   group_by(posteam) %>%
   summarise(avg_epa = mean(epa), avg_wpa = mean(wpa)) %>%
-  arrange(-avg_epa) %>%
-  view()
+  arrange(-avg_epa)
 avg_4q_spikes %>%
   select(posteam, avg_epa, avg_wpa) %>%
-  arrange(-avg_epa) %>%
-  view()
+  arrange(-avg_epa)
 avg_4q_spikes %>%
   select(posteam, avg_wpa, avg_epa) %>%
-  arrange(-avg_wpa) %>%
-  view()
-# # 11 teams have a positive average epa on their spikes and 3 teams have a positive average wpa on their spikes
+  arrange(-avg_wpa) 
+# 11 teams have a positive average epa on their spikes and 3 teams have a positive average wpa on their spikes
 avg_4q_spikes %>%
   select(posteam, avg_wpa, avg_epa) %>%
   filter(avg_wpa > 0 & avg_epa > 0)
 # the vikings, eagles and 49ers are the only teams that have a positive epa and wpa on average
-# now i want to plot the data with team logos and their average epa and wpa
+# Plot with team logos
 avg_4q_spikes <- avg_4q_spikes %>%
   left_join(teams_colors_logos, by = c("posteam" = "team_abbr"))
 fourth_quarter_spikes %>%
@@ -223,38 +216,14 @@ fourth_quarter_spikes %>%
 fourth_quarter_spikes %>%
   select(posteam, defteam, posteam_score, defteam_score, time, yrdln, epa, fg_prob, score_differential) %>%
   filter(score_differential > -3) %>%
-  arrange(-fg_prob) %>%
-  view()
+  arrange(-fg_prob)
 # when arranged by field goal probability and a chance to win the game with a field-goal the data tends to have a positive epa
 fourth_quarter_spikes %>%
   select(posteam, defteam, posteam_score, defteam_score, time, yrdln, epa, fg_prob, score_differential) %>%
   filter(score_differential < -3) %>%
-  arrange(fg_prob) %>%
-  view()
+  arrange(fg_prob)
 # with a low field goal probability epa is mostly negative
 # this additionally highlights my hypothesis that spikes are mostly ineffective, except in situations where there's a high likelihood of a positive result post-spike
-# i want to look at every example and the surrounding variables
-# one thing i haven't looked at yet is time, which is a character instead of a number
-# it's something complicated to do but with separate, as.numeric and mutate i can find the amount of time remaining
-fourth_quarter_spikes <- fourth_quarter_spikes %>%
-  separate(time, c('minute', 'second'), ':') %>%
-  mutate(minute = as.numeric(minute),
-         second = as.numeric(second))
-fourth_quarter_spikes <- fourth_quarter_spikes %>%
-  mutate(seconds_in_minutes = minute * 60)
-fourth_quarter_spikes <- fourth_quarter_spikes %>%
-  mutate(seconds_remaining = seconds_in_minutes + second)
-# now i have time as a number instead of a character i can plot time and epa
-fg_model %>%
-  ggplot(aes(x=epa, y=seconds_remaining)) +
-  geom_point(color = 'black', shape = 1) +
-  geom_smooth(color = 'black', method = 'lm')
-td_model %>%
-  ggplot(aes(x=epa, y=seconds_remaining)) +
-  geom_point(color = 'black', shape = 1) +
-  geom_smooth(color = 'black', method = 'lm')
-# i can also evaluate any data with seconds remaining as a numerical value
-# is there a correlation with seconds_remaining and higher epa?
 fg_4q_spikes <- fourth_quarter_spikes %>%
   filter(score_differential >= -3)
 td_4q_spikes <- fourth_quarter_spikes %>%
@@ -264,15 +233,13 @@ td_4q_spikes <- fourth_quarter_spikes %>%
 # the r for field goals is about .6, meaning with less time epa tends to be higher
 # the r for touchdown scores is about .14 which is super low meaning there is essentially no correlation between time and epa in a toucdown score game
 # is there a way to predict what the epa will be for any spike given a variety of statistics such as time, down, timeouts, yard line and score differential?
-# i want to create new data frames separately for a field goal and touchdown model with only a few data points
+# Create new data frames separately for a field goal and touchdown model with only a few data points
 fg_model <- fourth_quarter_spikes %>%
   filter(score_differential >= -3) %>%
   select(epa, game_seconds_remaining, down, yardline_100, posteam_timeouts_remaining, score_differential, fg_prob)
 td_model <- fourth_quarter_spikes %>%
   filter(score_differential <= -4) %>%
   select(epa, game_seconds_remaining, down, yardline_100, posteam_timeouts_remaining, score_differential, td_prob)
-# i can use the library(caret) and the function train to create models for epa in both field goal and touchdown score games
-# here i can create two epa model sets for field goals and touchdown score games
 epa_fg_model <- train(epa ~ .,
                       data = fg_model,
                       method = "lm")
@@ -282,15 +249,8 @@ epa_td_model <- train(epa ~ .,
 # with varImp we can look at how the variables factor into epa
 ggplot(varImp(epa_fg_model))
 ggplot(varImp(epa_td_model))
-# here we can see that field goal probability and touchdown probabilities are both very important, however, in field goal games, there are more important 
 fg_predictive_epa <- predict(epa_fg_model, fg_model)
 td_predictive_epa <- predict(epa_td_model, td_model)
-mean(fg_predictive_epa)
-mean(td_predictive_epa)
-# based on my predictive model on average epa in a field goal score game is about 0.04 while in a touchdown score game it's about -0.16
-# adding to my hypothesis that spikes in a touchdown score game are very inefficient and the occasional quarterback spike in a field-goal score game can be a very good and efficient move
-# now i made predicted values for each sequence, but i also want to run a multivariable regression model to create a model for epa
-# a lot of the dataframes have similar names so it may seem confusing
 fg_epa_model <- lm(epa ~ ., data = fg_model)
 td_epa_model <- lm(epa ~ ., data = td_model)
 summary(fg_epa_model)
