@@ -1,0 +1,697 @@
+---
+title: "Devin Hester's Non-Existent Case for the Hall of Fame"
+author: "Jarrett Markman"
+date: "2023-02-10"
+output:
+  html_document: default
+  pdf_document: F
+---
+
+```{r setup, echo=F, message=F}
+options(dplyr.summarise.inform = FALSE)
+```
+
+### Abstract
+
+Devin Hester is widely regarded as the best returner of all-time, with many fans and analysts claiming he deserves a spot in the NFL Hall of Fame. The only current "returners" in the Hall of Fame are Tim Brown and Deion Sanders, legendary players at Cornerback and Wide Receiver. As a Wide Receiver, Tim Brown's career stats consist of 1094 Receptions, 14934 Yards, and 100 Touchdowns. Comparatively, Devin Hester's career stats as a Wide Receiver are 255 Receptions, 3391 Yards, and 16 Touchdowns. At their career position, Hall of Famer Tim Brown has over 4x the Receptions, Yards, and 6x the amount of touchdowns as Devin Hester. If you were to include Hester's contributions as a returner, Tim Brown still would have almost 3x the amount of touchdowns, and would still have more overall yardage than Hester (keep in mind that someone like Darren Sproles has 11000 return yards).
+      Devin Hester does not belong in the Hall of Fame for 3 big reasons; one being that his listed "position" was as a Wide Receiver or Cornerback, and at that position, he was not worthy to be a Hall of Famer, two being that his contributions are a returner are pallid in comparison to that of solid career Wide Receivers, due to the fact that kickoffs and punts are such a small part of an NFL game, and third, he just was not even the best returner  of all time.
+```{r,warnings=F,messages=F,include=F}
+library('tidyverse')
+library('nflfastR')
+library('gt')
+library('ranger')
+library('xgboost')
+library('caret')
+library('vip')
+```
+```{r, message=F, echo=F}
+data <- load_pbp(2000:2022)
+options(scipen = 9999)
+data_reg <- data %>%
+  filter(season_type == 'REG')
+data_post <- data %>%
+  filter(season_type == 'POST')
+```
+```{r, echo=FALSE, message=F}
+kickoffs <- data_reg %>%
+  filter(kickoff_attempt == 1)
+kickoff_returns <- kickoffs %>%
+  group_by(kickoff_returner_player_name) %>%
+  filter(!is.na(kickoff_returner_player_name)) %>%
+  summarise(
+    total_kr_epa = sum(epa),
+    total_kr_wpa = sum(wpa),
+    kickoff_returns = n(),
+    kickoff_touchdowns = sum(touchdown),
+    total_kr_yds = sum(return_yards),
+    kr_yds_attempt = total_kr_yds/kickoff_returns,
+    avg_kr_epa = mean(epa),
+    avg_kr_wpa = mean(wpa),
+    kr_touchdownrate = kickoff_touchdowns/kickoff_returns
+  ) %>%
+  filter(kickoff_returns > 30)
+punts <- data_reg %>%
+  filter(punt_attempt == 1)
+home_returns <- punts %>%
+  filter(defteam == home_team)
+away_returns <- punts %>%
+  filter(defteam == away_team)
+home_returns <- home_returns %>%
+  group_by(punt_returner_player_name) %>%
+  filter(!is.na(punt_returner_player_name)) %>%
+  summarise(
+    total_pr_wpa = sum(vegas_home_wpa),
+    punt_returns = n(),
+    punt_touchdowns = sum(touchdown),
+    total_pr_yds = sum(return_yards),
+    pr_yds_attempt = total_pr_yds/punt_returns,
+    avg_pr_wpa = mean(vegas_home_wpa),
+    pr_touchdownrate = punt_touchdowns/punt_returns
+  ) %>%
+  filter(punt_returns > 30)
+away_returns <- away_returns %>%
+  group_by(punt_returner_player_name) %>%
+  filter(!is.na(punt_returner_player_name)) %>%
+  summarise(
+    total_pr_wpa = sum(vegas_wpa),
+    punt_returns = n(),
+    punt_touchdowns = sum(touchdown),
+    total_pr_yds = sum(return_yards),
+    pr_yds_attempt = total_pr_yds/punt_returns,
+    avg_pr_wpa = mean(vegas_wpa),
+    pr_touchdownrate = punt_touchdowns/punt_returns
+  ) %>%
+  filter(punt_returns > 30)
+returns <- home_returns %>%
+  inner_join(away_returns, by = 'punt_returner_player_name')
+returns <- returns %>%
+  summarise(
+    returner = punt_returner_player_name,
+    total_returns = punt_returns.x + punt_returns.y,
+    total_wpa = total_pr_wpa.x + total_pr_wpa.y,
+    total_touchdowns = punt_touchdowns.x + punt_touchdowns.y,
+    total_yards = total_pr_yds.x + total_pr_yds.y,
+    wpa_return = total_wpa/total_returns,
+    touchdowns_return = total_touchdowns/total_returns,
+    yards_return = total_yards/total_returns
+  )
+receivers <- data_reg %>%
+  filter(pass == 1) %>%
+  group_by(receiver_player_name) %>%
+  filter(!is.na(receiver_player_name)) %>%
+  summarise(
+    total_receiving_epa = sum(epa),
+    total_receiving_wpa = sum(wpa),
+    total_yards = sum(yards_gained),
+    passes = n(),
+    avg_yards = total_yards/passes,
+    avg_receiving_epa = mean(epa),
+    avg_receiving_wpa = mean(wpa),
+    touchdowns = sum(touchdown),
+    receiving_touchdownrate = touchdowns/passes
+  ) %>%
+  filter(passes > 30)
+```
+
+### Part 1: As a Kick/Punt Returner, Devin Hester's Contributions are not Impressive in Comparison to Receivers.
+
+#### How much of an impact did Devin Hester have on kick returns?
+
+```{r, echo=F}
+kickoff_returns %>%
+  filter(kickoff_returner_player_name == 'D.Hester') %>%
+  select(kickoff_returns, total_kr_epa, total_kr_wpa, avg_kr_epa, avg_kr_wpa, total_kr_yds, kr_yds_attempt, kickoff_touchdowns, kr_touchdownrate) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Devin Hester Career Performance on Kick Returns',
+    columns = c(kickoff_returns, total_kr_epa, total_kr_wpa, avg_kr_epa, avg_kr_wpa, total_kr_yds, kr_yds_attempt, kickoff_touchdowns, kr_touchdownrate)
+  ) %>%
+  cols_label(
+    kickoff_returns = 'Total Kick Returns',
+    total_kr_epa = 'Total Expected Points Added',
+    total_kr_wpa = 'Total Win Probability Added',
+    avg_kr_epa = 'Expected Points Added per Return',
+    avg_kr_wpa = 'Average Win Probability Added per Return',
+    total_kr_yds = 'Total Kick Return Yards',
+    kr_yds_attempt = 'Yards per Return',
+    kickoff_touchdowns = 'Kick Return Touchdowns',
+    kr_touchdownrate = 'Touchdowns per Return'
+  ) %>%
+  data_color(
+    columns = c(kickoff_returns, total_kr_epa, total_kr_wpa, avg_kr_epa, avg_kr_wpa, total_kr_yds, kr_yds_attempt, kickoff_touchdowns, kr_touchdownrate),
+    colors = scales::col_numeric(
+      'orange2',
+               domain = NULL
+    )
+  ) %>%
+  tab_options(table.background.color = "blue2") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+As a kick returner, Hester contributed over 90 expected points added (epa) on all his kick returns, as well as almost 300% of win probability added (wpa). He also had 5 kick return touchdowns, scoring a touchdown almost 1 out of every 50 returns.  
+#### How does that compare to the production of a Wide Receiver?
+
+```{r, echo=FALSE}
+receivers %>%
+  filter(total_receiving_epa > 100 & total_receiving_wpa > 3) %>%
+  arrange(total_receiving_epa) %>%
+  select(receiver_player_name, total_receiving_epa, total_receiving_wpa, total_yards, touchdowns, receiving_touchdownrate) %>%
+  head(10) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Lowest 10 Receivers With a Total Receiving EPA above 100 in the 21st Century (ascending)',
+    columns = c(receiver_player_name, total_receiving_epa, total_receiving_wpa, total_yards, touchdowns, receiving_touchdownrate)
+  ) %>%
+  cols_label(
+    receiver_player_name = 'Receiver',
+    total_receiving_epa = 'Total Expected Points Added on a Reception',
+    total_receiving_wpa = 'Total Win Probability Added on a Reception',
+    total_yards = 'Total Receiving Yards',
+    touchdowns = 'Total Receiving Touchdowns',
+    receiving_touchdownrate = 'Receiving Touchdown Rate'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+All of these receivers (some of them still active NFL players), all outperform Hester in terms of total epa and wpa added. Compared to these guys, Hester's contributions as a Kick Returner are feeble. Additionally, while Hester is praised for his ability to score return touchdowns, all of these receivers score touchdowns at a much  higher rate, some even score at double the rate. 
+#### How much of an impact did Devin Hester have on punt returns?
+
+```{r, echo=F}
+returns %>%
+  select(returner, total_returns, total_wpa, total_touchdowns, total_yards, wpa_return, touchdowns_return, yards_return) %>%
+  arrange(-total_wpa) %>%
+  filter(returner == 'D.Hester') %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Best Punt Returners from 2000-2022',
+    columns = c(returner, total_returns, total_wpa, total_touchdowns, total_yards, wpa_return, touchdowns_return, yards_return)
+  ) %>%
+  cols_label(
+    returner = 'Returner',
+    total_returns = '# of Punt Returns',
+    total_wpa = 'Total Win Probability Added',
+    total_touchdowns = 'Total Touchdowns',
+    total_yards = 'Total Yards',
+    wpa_return = 'Total Win Probability Added per Return',
+    touchdowns_return = 'Touchdowns per Return',
+    yards_return = 'Yards per Return'
+  ) %>%
+  data_color(
+    columns = c(NULL, total_returns, total_wpa, total_touchdowns, total_yards, wpa_return, touchdowns_return, yards_return),
+    colors = scales::col_numeric(
+      'orange2',
+               domain = NULL
+    )
+  ) %>%
+  tab_options(table.background.color = "blue2") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+It's much harder to evaluate Hester's production from a punt returning standpoint, because there aren't any    measures like expected points that can evaluate his performance as a punt returner. However, there is win probability for the results before and after the punt. This isn't the best way to measure a player because it's  also important based on how the punting team operates. Given the stigma that Hester was a "feared" returner it's possible he was avoided and punts went into the end-zone or out of bounds when he was a returner. It's additionally possible that a team's win probability could be impacted by the possibility of kicking a field goal or attempting to convert a first down. 
+      Considering this, in Devin Hester's 424 punt returns, his overall win probability added was below 1. His impressive number of touchdown's is not that impressive when you consider the fact he got a touchdown once every 30 or so returns.  
+#### How does that compare to the production of a Wide Receiver?
+
+```{r, echo=F}
+receivers %>%
+  filter(total_receiving_wpa > 1 & receiving_touchdownrate > .05) %>%
+  arrange(total_receiving_wpa) %>%
+  select(receiver_player_name, total_receiving_wpa, touchdowns,  total_yards,receiving_touchdownrate) %>%
+  head(10) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Lowest 10 Receivers With a Total Receiving WPA above 1 in the 21st Century (ascending)',
+    columns = c(receiver_player_name, total_receiving_wpa, touchdowns, total_yards, receiving_touchdownrate)
+  ) %>%
+  cols_label(
+    receiver_player_name = 'Receiver',
+    total_receiving_wpa = 'Total Win Probability Added on a Reception',
+    touchdowns = 'Total Receiving Touchdowns',
+    total_yards = 'Total Receiving Yards',
+    receiving_touchdownrate = 'Receiving Touchdown Rate'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+As a punt returner, Devin Hester's overall contributions were similar to that of a receiver like K.J. Osborn or Dan Arnold. Throughout all of his punt returns, his contribution is similar to a receiver that has spend 3 total years in the NFL, with only 2 of them with a reception. 
+#### How much of an impact did Devin Hester have on both kick and punt returns?
+
+```{r, echo=F}
+combined <- kickoff_returns %>%
+  inner_join(returns, by = c('kickoff_returner_player_name' = 'returner'))
+combined <- combined %>%
+  summarise(
+    total_returns = kickoff_returns + total_returns,
+    returner = kickoff_returner_player_name,
+    total_return_wpa = total_kr_wpa + total_wpa,
+    total_tds = total_touchdowns + kickoff_touchdowns,
+    total_return_yards = total_kr_yds + total_yards
+  )
+combined %>%
+  arrange(-total_return_wpa) %>%
+  filter(returner == 'D.Hester') %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Best Returners of the 21st Century',
+    columns = c(returner, total_returns, total_return_wpa, total_tds, total_return_yards)
+  ) %>%
+  cols_label(
+    returner = 'Returner',
+    total_returns = '# of Returns',
+    total_return_wpa = 'Total Win Probability Added',
+    total_tds = 'Total Touchdowns',
+    total_return_yards = 'Total Yards'
+  ) %>%
+  data_color(
+    columns = c(NULL, total_returns, total_return_wpa, total_tds, total_return_yards),
+    colors = scales::col_numeric(
+      'orange2',
+               domain = NULL
+    )
+  ) %>%
+  tab_options(table.background.color = "blue2") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+Throughout his career, as both a kick and punt returner, Hester's overall win probability added was about 3.7, he additionally scored 19 touchdowns over 719 returns.
+```{r, echo=F}
+receivers %>%
+  filter(total_receiving_wpa > 4) %>%
+  arrange(total_receiving_wpa) %>%
+  select(receiver_player_name, total_receiving_wpa, touchdowns, total_yards) %>%
+  head(10) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Lowest 10 Receivers With a Total Receiving WPA above 4 in the 21st Century (ascending)',
+    columns = c(receiver_player_name, total_receiving_wpa, touchdowns, total_yards)
+  ) %>%
+  cols_label(
+    receiver_player_name = 'Receiver',
+    total_receiving_wpa = 'Total Win Probability Added on a Reception',
+    touchdowns = 'Total Receiving Touchdowns',
+    total_yards = 'Total Receiving Yards'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+While some of these players have had very good careers (Victor Cruz, Robert Woods, Darren Waller, Jared Cook), most likely, none of them will have Hall of Fame consideration, despite the fact that as receivers, their overall contributions (in terms of total win probability added) was more than Hester's contributions as a returner.
+### Part 2: Devin Hester is not even the Best Kick/Punt Returner of the 21st Century.
+
+#### Who are the Greatest Kick Returners of the 21st Century?
+
+```{r, echo=F}
+kickoff_returns %>%
+  select(kickoff_returner_player_name, kickoff_returns, total_kr_epa, total_kr_wpa, avg_kr_epa, avg_kr_wpa, total_kr_yds, kr_yds_attempt, kickoff_touchdowns, kr_touchdownrate) %>%
+  arrange(-total_kr_epa) %>%
+  head(18) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Best Kick Returners from 2000-2022',
+    columns = c(kickoff_returner_player_name, kickoff_returns, total_kr_epa, total_kr_wpa, avg_kr_epa, avg_kr_wpa, total_kr_yds, kr_yds_attempt, kickoff_touchdowns, kr_touchdownrate)
+  ) %>%
+  cols_label(
+    kickoff_returner_player_name = 'Returner',
+    kickoff_returns = 'Total Kick Returns',
+    total_kr_epa = 'Total Expected Points Added',
+    total_kr_wpa = 'Total Win Probability Added',
+    avg_kr_epa = 'Expected Points Added per Return',
+    avg_kr_wpa = 'Average Win Probability Added per Return',
+    total_kr_yds = 'Total Kick Return Yards',
+    kr_yds_attempt = 'Yards per Return',
+    kickoff_touchdowns = 'Kick Return Touchdowns',
+    kr_touchdownrate = 'Touchdowns per Return'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+In terms of expected points added, Josh Cribbs has made the largest contribution to his team. In his 426 kick  returns, he totaled over 250 expected points and over 10000 yards, with 8 kick return touchdowns. Devin Hester is the 19th kick returner in this table, lower than the likes of Darren Sproles, Wes Welker and Leon Washington. While the argument of a smaller sample size could be made (for example: Cribbs (426), Hester (295)), someone like Cribbs has almost double the amount of expected points added per return. This adage is true for most of the other returners ahead of him. The same argument of him being feared could technically apply.
+#### Who are the Greatest Punt Returners of the 21st Century?
+
+```{r, echo=F}
+returns %>%
+  select(returner, total_returns, total_wpa, total_touchdowns, total_yards, wpa_return, touchdowns_return, yards_return) %>%
+  arrange(-total_wpa) %>%
+  head(20) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Best Punt Returners from 2000-2022',
+    columns = c(returner, total_returns, total_wpa, total_touchdowns, total_yards, wpa_return, touchdowns_return, yards_return)
+  ) %>%
+  cols_label(
+    returner = 'Returner',
+    total_returns = '# of Punt Returns',
+    total_wpa = 'Total Win Probability Added',
+    total_touchdowns = 'Total Touchdowns',
+    total_yards = 'Total Yards',
+    wpa_return = 'Total Win Probability Added per Return',
+    touchdowns_return = 'Touchdowns per Return',
+    yards_return = 'Yards per Return'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+While Hester may have the most punt return touchdowns of all time, he also has 424 total returns. Someone like Reggie Bush had 4 returns on 121 returns. On a per return basis, Reggie Bush is more likely to score a touchdown. Through being sorted by win probability added, this shows that despite Hester being a great "big-play" threat, it's more likely that most of the time Hester's returns either went for negative yardage, or were unimpactful. The truth is that Hester only scored on a return about once every 30 returns. 
+#### Who are the Greatest Overall Returners of the 21st Century? 
+
+```{r, echo=FALSE}
+combined %>%
+  arrange(-total_return_wpa) %>%
+  head(13) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Best Returners of the 21st Century',
+    columns = c(returner, total_returns, total_return_wpa, total_tds, total_return_yards)
+  ) %>%
+  cols_label(
+    returner = 'Returner',
+    total_returns = '# of Returns',
+    total_return_wpa = 'Total Win Probability Added',
+    total_tds = 'Total Touchdowns',
+    total_return_yards = 'Total Yards'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+When combining both kick and punt return production, Devin Hester is just outside the top 10 in terms of total win probability added (WPA). No doubt it is extremely impressive that he has the highest touchdown total, but other returners like Allen Rossum and Josh Cribbs both have more career WPA and more career return yards. Other returners like Leon Washington and Desmond Howard may not have as many touchdowns or yards, however, they still  produced with the amount of returns they had. A large factor in why Hester had so many touchdowns is because he had so many attempts. 
+### Part 3: What if There was a way to Create Expected Yards on a Kick and Punt Return?
+
+With the data available in nflfastR - such as kick distance, weather, and return yards (to name a few) - I was able to model the expected yards on a kick return using XGBoost. With the expected yards total, and the initial  return yards total, I was able to create a metric for "Total Return Yards Over Expected," by subtracting the expected yards total from the initial return yards, to see how a player outperformed their expectation. 
+```{r, echo=FALSE, messages=FALSE, warnings=FALSE, results = 'hide', warning=FALSE}
+kickoffs$temp[is.na(kickoffs$temp)] = 68
+kickoffs$wind[is.na(kickoffs$wind)] = 0
+kickoffs$kick_distance[is.na(kickoffs$kick_distance)] = 55.6
+kickoffs$score_differential[is.na(kickoffs$score_differential)] = 0
+return_yds_allowed <- kickoffs %>%
+  filter(!is.na(defteam)) %>%
+  filter(touchback == 0) %>%
+  group_by(defteam, season) %>%
+  summarise(
+    yds_allowed = mean(return_yards)
+  ) %>%
+  ungroup()
+kickoffs <- kickoffs %>%
+  left_join(return_yds_allowed, by = c('defteam', 'season'))
+kickoff_data <- kickoffs %>%
+  ungroup() %>%
+  select(
+    label = return_yards, kick_distance, touchback, yds_allowed, half_seconds_remaining, quarter_seconds_remaining,
+    score_differential, ep, wp, temp, wind, roof
+  )
+kickoff_data$label[is.na(kickoffs$return_yards)] = 0
+dmy <- dummyVars(' ~ .', data = kickoff_data)
+kickoff_model_data <- data.frame(predict(dmy, newdata = kickoff_data))
+smp_size <- floor(0.80 * nrow(kickoff_data))
+set.seed(1234)
+ind <- sample(seq_len(nrow(kickoff_model_data)), size = smp_size)
+train <- as.matrix(kickoff_model_data[ind, ])
+test <- as.matrix(kickoff_model_data[-ind, ])
+x_kryards <- xgboost(
+  data = train[, 2:15], 
+  label = train[, 1],
+  nrounds = 1000,
+  objective = 'reg:squarederror', 
+  early_stopping_rounds = 5, 
+  max_depth = 6,
+  eta = .25
+)
+values <- predict(x_kryards, test[, 2:15])
+y <- test[, 1]
+postResample(values, y)
+expected_return_yards <- as.data.frame(
+  matrix(predict(x_kryards, as.matrix(kickoff_model_data %>% select(-label))))
+) %>%
+  rename(x_return_yards = V1)
+expected_return_yards <- cbind(kickoffs, expected_return_yards)
+```
+
+```{r, echo=FALSE, messages=FALSE, warnings=FALSE, results = 'hide', warning=FALSE}
+punts$temp[is.na(punts$temp)] = 68
+punts$wind[is.na(punts$wind)] = 0
+punts$kick_distance[is.na(punts$kick_distance)] = 43.4
+punt_return_allowed <- punts %>%
+  filter(!is.na(posteam)) %>%
+  filter(touchback == 0) %>%
+  group_by(posteam, season) %>%
+  summarise(
+    yds_allowed = mean(return_yards)
+  )
+punts <- punts %>%
+  left_join(punt_return_allowed, by = c('posteam', 'season'))
+punt_data <- punts %>%
+  ungroup() %>%
+  select(
+    label = return_yards, kick_distance, touchback, yds_allowed, half_seconds_remaining, quarter_seconds_remaining,
+    score_differential, ep, wp, temp, wind, roof
+  )
+dmy <- dummyVars(' ~ .', data = punt_data)
+punt_model_data <- data.frame(predict(dmy, newdata = punt_data))
+smp_size <- floor(0.80 * nrow(punt_data))
+set.seed(1234)
+ind <- sample(seq_len(nrow(punt_model_data)), size = smp_size)
+train <- as.matrix(punt_model_data[ind, ])
+test <- as.matrix(punt_model_data[-ind, ])
+x_pryards <- xgboost(
+  data = train[, 2:15], 
+  label = train[, 1],
+  nrounds = 1000,
+  objective = 'reg:squarederror', 
+  early_stopping_rounds = 5, 
+  max_depth = 6,
+  eta = .25
+)
+values <- predict(x_pryards, test[, 2:15])
+y <- test[, 1]
+postResample(values, y)
+expected_punt_return_yards <- as.data.frame(
+  matrix(predict(x_pryards, as.matrix(punt_model_data %>% select(-label))))
+) %>%
+  rename(x_return_yards = V1)
+expected_punt_return_yards <- cbind(punts, expected_punt_return_yards)
+```
+#### Who are the best Kick Returners of the 21st Century (Return Yards Over Expected)?
+
+```{r, echo=F}
+expected_return_yards %>% 
+  mutate(return_yoe = return_yards - x_return_yards) %>%
+  group_by(kickoff_returner_player_name) %>%
+  filter(!is.na(kickoff_returner_player_name)) %>%
+  summarise(
+    returns = n(),
+    total_return_yoe = sum(return_yoe),
+    return_yoe_per_return = total_return_yoe/returns
+  ) %>%
+  filter(returns > 100) %>%
+  arrange(-total_return_yoe) %>%
+  head(30) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Best Kick Returners from 2000-2022',
+    columns = c(kickoff_returner_player_name, returns, total_return_yoe, return_yoe_per_return)
+  ) %>%
+  data_color(
+    columns = return_yoe_per_return,
+    colors = scales::col_numeric(
+      palette = c('white', 'red'),
+      domain = NULL
+    )) %>%
+  cols_label(
+    kickoff_returner_player_name = 'Returner',
+    returns = '# of Kick Returns',
+    total_return_yoe = 'Total Return Yards Over Expected',
+    return_yoe_per_return = 'Total Return Yards Over Expected Per Return'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+Josh Cribbs is high-and-above the best kick returner of the 21st century. followed by other great returners like Cordarralle Patterson, Michael Lewis, Desmond Howard and Darren Sproles. Despite being highly regarded as one of the greatest returners of all time, Devin Hester is barely within the top 30 of kick returners in the 21st century.
+In terms of performing over expectation (return yards above expected), not only does Hester fail to do so - he's outperformed by other returners like Michael Lewis, Desmond Howard, Darren Sproles, Percy Harvin, and Leon Washington, guys who will not have the chance to make the Hall of Fame. 
+This is a great example of Hester not being this "generational" returner, because in reality, Hester is not one of the best kick returners of all-time, and should not even be mentioned in comparison to true greats like Josh Cribbs and Cordarrelle Patterson. 
+#### Who are the best Punt Returners of the 21st Century (Return Yards Over Expected)?
+
+```{r, echo=F}
+expected_punt_return_yards %>% 
+  mutate(return_yoe = return_yards - x_return_yards) %>%
+  group_by(punt_returner_player_name) %>%
+  filter(!is.na(punt_returner_player_name)) %>%
+  summarise(
+    returns = n(),
+    total_return_yoe = sum(return_yoe),
+    return_yoe_per_return = total_return_yoe/returns
+  ) %>%
+  filter(returns > 100) %>%
+  arrange(-total_return_yoe) %>%
+  head(10) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Best Punt Returners from 2000-2022',
+    columns = c(punt_returner_player_name, returns, total_return_yoe, return_yoe_per_return)
+  ) %>%
+  data_color(
+    columns = return_yoe_per_return,
+    colors = scales::col_numeric(
+      palette = c('white', 'red'),
+      domain = NULL
+    )) %>%
+  cols_label(
+    punt_returner_player_name = 'Returner',
+    returns = '# of Punt Returns',
+    total_return_yoe = 'Total Return Yards Over Expected',
+    return_yoe_per_return = 'Total Return Yards Over Expected Per Return'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+While he was definitely not the best kick returner of the 21st century, Hester definitely appears to be one of the best punt returners of the 21st century, with the most punt return yards over expected, outperforming other great returners like Josh Cribbs, Michael Lewis, and Dwayne Harris. 
+#### Combining their Kick/Punt Production, who are the best Kick Returners of the 21st Century (Return Yards Over Expected)?
+
+```{r, echo=F}
+kr <- expected_return_yards %>% 
+  mutate(return_yoe = return_yards - x_return_yards) %>%
+  group_by(kickoff_returner_player_name) %>%
+  filter(!is.na(kickoff_returner_player_name)) %>%
+  summarise(
+    returns = n(),
+    total_return_yoe = sum(return_yoe),
+    return_yoe_per_return = total_return_yoe/returns
+  ) %>%
+  filter(returns > 100) %>%
+  arrange(-total_return_yoe)
+pr <- expected_punt_return_yards %>% 
+  mutate(return_yoe = return_yards - x_return_yards) %>%
+  group_by(punt_returner_player_name) %>%
+  filter(!is.na(punt_returner_player_name)) %>%
+  summarise(
+    returns = n(),
+    total_return_yoe = sum(return_yoe),
+    return_yoe_per_return = total_return_yoe/returns
+  ) %>%
+  filter(returns > 100) %>%
+  arrange(-total_return_yoe)
+returners <- kr %>%
+  inner_join(pr, by = c('kickoff_returner_player_name' = 'punt_returner_player_name'))
+returners <- returners %>%
+  summarise(
+    returner = kickoff_returner_player_name,
+    returns = returns.x + returns.y,
+    total_return_yoe = total_return_yoe.x + total_return_yoe.y,
+    total_return_yoe_return = total_return_yoe/returns
+  )
+returners %>%
+  select(returner, returns, total_return_yoe, total_return_yoe_return) %>%
+  arrange(-total_return_yoe) %>%
+  head(10) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'Best Returners of the 21st Century',
+    columns = c(returner, returns, total_return_yoe, total_return_yoe_return)
+  ) %>%
+  data_color(
+    columns = total_return_yoe_return,
+    colors = scales::col_numeric(
+      palette = c('white', 'red'),
+      domain = NULL
+    )
+  ) %>%
+  cols_label(
+    returner = 'Returner',
+    returns = '# of Total Returns',
+    total_return_yoe = 'Total Return Yards Over Expected',
+    total_return_yoe_return = 'Total Return Yards Over Expected Per Return'
+  ) %>%
+  tab_options(table.background.color = "black") %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+Josh Cribbs is the best returner of the 21st century - and it's not close in the slightest. Cribbs has almost  double the amount of total return yards over expected than the next closest returner, and has over 500 more yards over expected than the so-called "GOAT" returner, Devin Hester. 
+Hester ranks 3rd in total return yards over expected, however on a per return basis, other returners like Adam "Pacman" Jones, and Dante Hall average more return yards over expected on a per return basis.
+If Hester "truly" belongs in the Hall of Fame for his prowess as a return specialist, at the very least Josh Cribbs and Michael Lewis should be in before him. 
+### Part 4: Conclusion
+      
+The truth is that a return specialist should never have a chance to make the Hall of Fame. In terms of overall value to a team, a return specialist will never reach the same value of any Wide Receiver that is not in the Hall of Fame. Not limited to Devin Hester, when comparing the overall production of a Wide Receiver to a returner, the overall impact that a Wide Receiver has will always surmount the impact that a returner has. 
+There's a reason that on the website for the Hall of Fame that there aren't any players that only play "KR" or "PR." There's also a reason why players like Josh Cribbs and Dwayne Harris' Football Reference pages say that they are only a "WR." Devin Hester wasn't so amazing that he should be treated like the founder of the position, when other players were better at that position - one that doesn't even really exist.
+Returns are just not very important over the course of a game. For one team, there are maybe 10 kick or punt returns over the course of a game. Comparably, a 3rd receiver on a team may have something like 40 snaps played over the course of the game. In terms of game impact, the receiver will always have more of an opportunity to impact the game over the returner, just because he's on the field so much longer. A returner like Devin Hester has a 1/50 and a 1/30 chance to score a kick and punt return touchdown, even giving him the benefit of the doubt, his impact will be minimal over the course of the season. If you compare that to a 3rd receiver, it's more likely than not that the overall impact that receiver has more of an impact than Hester. No matter what, the receiver has A) more chances to make an impact and B) is more of an active participant than any returner. If a team had the option of taking a good 3rd receiver, or Devin Hester, the receiver would always be the better pick. 
+If Devin Hester was so good - so good that he deserves a spot in the Hall of Fame - why didn't he actually play for the Bears? If he was this dynamic runner surely he good have been a great Runningback or Wide Receiver? As a matter of fact, why don't other great runners in the NFL (like Christian McCaffrey or Saquon Barkley) return kicks and punts? The reality is that it's just not important enough to play them as a returner, because the possibility of them being injured is probably more likely than a great return, so teams choose not to use their "valuable" players.
+Devin Hester was drafted as a Defensive Back, who then was listed as a Wide Receiver, who at the end of his career was a Defensive Back. Though he was a great returner, the truth of the matter is that he never really made an impact at his listed position. His overall production as a returner pales in comparison to that of a solid 3rd receiver, solely due to the fact that a returner just doesn't play enough to make that large of an impact on the game.
+Devin Hester scored a lot of return touchdowns so he's viewed as this "amazing" special teams player, when the truth is a majority of the time he wasn't doing anything special. When comparing his overall body of work to other returners like Josh Cribbs and Michael Lewis, Devin Hester isn't even the greatest returner of the 21st century. 
+
+### Devin Hester does not belong in the Hall of Fame. 
+### If any "Return Specialist" does, it is **Josh Cribbs**. 
