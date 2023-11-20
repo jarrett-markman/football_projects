@@ -1,0 +1,288 @@
+---
+title: 'Why do Teams run Fake Special Teams Plays?'
+author: "Jarrett Markman"
+date: "2023-01-12"
+output:
+  html_document: default
+  pdf_document: F
+---
+
+### Part 1: Abstract
+
+      In their week 16 matchup against the Miami Dolphins the Green Bay Packers ran a Fake Punt Run on 4th and 2 at  their own 20-yard line. If they were always planning on going for it why would they not choose to run an actual  run or pass play? 
+      Sometimes many other teams will choose to run fake punts or fake field goals to try and continue the drive,    when it seems much more practical to run a normal pass or run play, if the goal is to continue the drive. 
+      How successful are fake punts, fake field goals and regular plays on fourth downs at successfully gaining a    first down? Can fake punts or field goals offer a competitive advantage for some teams?
+```{r,warnings=F,messages=F,include=F}
+library('tidyverse')
+library('nflfastR')
+library('gt')
+```
+```{r, message=F, echo=F}
+data <- load_pbp(2000:2022)
+options(scipen = 9999)
+data_reg <- data %>%
+  filter(season_type == 'REG')
+data_post <- data %>%
+  filter(season_type == 'POST')
+```
+```{r, message=F, echo=F}
+punt_passes <- data_reg %>%
+  filter(down == 4 & play_type == 'pass' & special_teams_play == 1 & grepl('Punt formation', desc)) %>%
+  group_by(ydstogo) %>%
+  filter(first_down != 'NA') %>%
+  summarise(
+    Plays = n(),
+    first_downs = sum(first_down),
+    firstdownrate = round((first_downs/Plays) * 100, 2),
+    Key = 'Fake Punt Pass')
+punt_runs <- data_reg %>%
+  filter(down == 4 & play_type == 'run' & special_teams_play == 1 & grepl('Punt formation', desc)) %>%
+  group_by(ydstogo) %>%
+  filter(first_down != 'NA') %>%
+  summarise(
+    Plays = n(),
+    first_downs = sum(first_down),
+    firstdownrate = round((first_downs/Plays) * 100, 2),
+    Key = 'Fake Punt Run')
+fg_passes <- data_reg %>%
+  filter(down == 4 & play_type == 'pass' & special_teams_play == 1 & grepl('Field Goal formation', desc)) %>%
+  group_by(ydstogo) %>%
+  filter(first_down != 'NA') %>%
+  summarise(
+    Plays = n(),
+    first_downs = sum(first_down),
+    firstdownrate = round((first_downs/Plays) * 100, 2),
+    Key = 'Fake FG Pass')
+fg_runs <- data_reg %>%
+  filter(down == 4 & play_type == 'run' & special_teams_play == 1 & grepl('Field Goal formation', desc)) %>%
+  group_by(ydstogo) %>%
+  filter(first_down != 'NA') %>%
+  summarise(
+    Plays = n(),
+    first_downs = sum(first_down),
+    firstdownrate = round((first_downs/Plays) * 100, 2),
+    Key = 'Fake FG Run')
+run_play <- data_reg %>%
+  filter(special_teams_play == 0 & down == 4 & rush == 1) %>%
+  group_by(ydstogo) %>%
+  filter(first_down != 'NA') %>%
+  summarise(
+    Plays = n(),
+    first_downs = sum(first_down),
+    firstdownrate = round((first_downs/Plays) * 100, 2),
+    Key = 'Normal Run'
+  )
+pass_play <- data_reg %>%
+  filter(special_teams_play == 0 & down == 4 & pass == 1) %>%
+  group_by(ydstogo) %>%
+  filter(first_down != 'NA') %>%
+  summarise(
+    Plays = n(),
+    first_downs = sum(first_down),
+    firstdownrate = round((first_downs/Plays) * 100, 2),
+    Key = 'Normal Pass'
+  )
+```
+
+### Part 2: Plotting the Data
+
+```{r, echo=F, out.width="200%"}
+ggplot(NULL, aes(ydstogo, firstdownrate, color = Key)) +
+  geom_point(data = fg_passes, aes(size = Plays)) +
+  geom_point(data = fg_runs, aes(size = Plays)) +
+  geom_point(data = punt_passes, aes(size = Plays)) +
+  geom_point(data = punt_runs, aes(size = Plays)) +
+  geom_line(data = fg_passes) +
+  geom_line(data = fg_runs) +
+  geom_line(data = punt_passes) +
+  geom_line(data = punt_runs) +
+  scale_x_continuous(breaks = seq(0, 40, 5)) +
+  labs(
+    x='Yards Needed for a First Down',
+    y= 'First Down Percentage',
+    title = 'Conversion Rates on Fake Special Teams Plays',
+    caption = 'Jarrett Markman | Data: nflverse'
+  ) +
+  theme_bw() +
+  theme(plot.title = element_text(size = 12, face = 'bold', hjust = .5))
+```
+
+      Both fake punt runs and fake punt passes have extremely high conversion rates, despite not the largest sample  size. Fake punt runs have a ridiculously high conversion rate on 4th and 3 and shorter situations. Fake punt passes on 4th and 7 or shorter have at least a 50% conversion rate. Fake field goal passes and runs are extremely    unsuccessful, especially in comparison to both fake punt runs and fake punt passes. 
+      While there are 100% conversion rates on 4th and 21 fake punt passes, 4th and 24 fake punt runs, and 4th and 26 fake field goal passes, these instances should be taken with a grain of salt because - as seen in the tiny size  of the points in the graph - the sample size of plays is so small, it's not a reliable estimator for future      success.
+```{r, echo=F, out.width="200%"}
+ggplot(NULL, aes(ydstogo, firstdownrate, color = Key)) +
+  geom_point(data = pass_play, aes(size = Plays)) +
+  geom_point(data = run_play, aes(size = Plays)) +
+  geom_line(data = pass_play) +
+  geom_line(data = run_play) +
+  scale_x_continuous(breaks = seq(0, 40, 5)) +
+  labs(
+    x='Yards Needed for a First Down',
+    y= 'First Down Percentage',
+    title = 'Conversion Rates on Normal 4th Down Plays',
+    caption = 'Jarrett Markman | Data: nflverse'
+  ) +
+  theme_bw() +
+  theme(plot.title = element_text(size = 12, face = 'bold', hjust = .5))
+```
+
+      The sample size for 4th down runs and passes is 5-10 times higher than that for fake punts and field goals.    Running plays on 4th and 1 tend to be more successful than passing plays, however, as long as it's not a 4th and 1, passing plays have a higher conversion rate than running plays.
+```{r, echo=F, out.width="200%"}
+ggplot(NULL, aes(ydstogo, firstdownrate, color = Key)) +
+  geom_point(data = pass_play) +
+  geom_point(data = run_play) +
+  geom_point(data = punt_passes) +
+  geom_point(data = punt_runs) +
+  geom_point(data = fg_passes) +
+  geom_point(data = fg_runs) +
+  scale_x_continuous(breaks = seq(0, 40, 5)) +
+  labs(
+    x='Yards Needed for a First Down',
+    y= 'First Down Percentage',
+    title = 'Are Special Team "Fakes" more Effective than Regular 4th Down Plays?',
+    caption = 'Jarrett Markman | Data: nflverse'
+  ) +
+  theme_bw() +
+  theme(plot.title = element_text(size = 12, face = 'bold', hjust = .5))
+```
+
+      Comparing both fake plays and regular plays together is super significant. Through this comparison, it can be  seen that fake punt runs are extremely effective in short yardage as well as fake punt passes in mid-long yardage situations, with conversion rates on par with those for normal run and pass plays. 
+      This is really important because fake punts can be used strategically mixed with normal 4th down run and pass  plays. 
+```{r, message=F, echo=F}
+normal <- pass_play %>%
+  left_join(run_play, by = 'ydstogo')
+normal <- normal %>%
+  left_join(punt_passes, by = 'ydstogo')
+normal <- normal %>%
+  left_join(punt_runs, by = 'ydstogo')
+normal <- normal %>%
+  left_join(fg_passes, by = 'ydstogo')
+normal <- normal %>%
+  left_join(fg_runs, by = 'ydstogo')
+normal <- normal %>%
+  rename(
+    'Pass Plays n' = Plays.x,
+    'Pass Plays' = firstdownrate.x,
+    'Rush Plays n' = Plays.y,
+    'Rush Plays' = firstdownrate.y,
+    'Punt Passes n' = Plays.x.x,
+    'Punt Passes' = firstdownrate.x.x,
+    'Punt Runs n' = Plays.y.y,
+    'Punt Runs' = firstdownrate.y.y,
+    'Field Goal Passes n' = Plays.x.x.x,
+    'Field Goal Passes' = firstdownrate.x.x.x,
+    'Field Goal Runs n' = Plays.y.y.y,
+    'Field Goal Runs' = firstdownrate.y.y.y
+  )
+table <- normal %>%
+  mutate(
+    pass_Plays = as.character(`Pass Plays n`),
+    pass_Plays = paste('(', pass_Plays, sep = ''),
+    pass_Plays = paste(pass_Plays, ')', sep = ''),
+    normalpass=paste(`Pass Plays`, pass_Plays, sep = ' '),
+    run_Plays = as.character(`Rush Plays n`),
+    run_Plays = paste('(', run_Plays, sep = ''),
+    run_Plays = paste(run_Plays, ')', sep = ''),
+    normalrun=paste(`Rush Plays`, run_Plays, sep = ' '),
+    punt_pass = as.character(`Punt Passes n`),
+    punt_pass = paste('(', punt_pass, sep = ''),
+    punt_pass = paste(punt_pass, ')', sep = ''),
+    puntpass=paste(`Punt Passes`, punt_pass, sep = ' '),
+    punt_run = as.character(`Punt Runs n`),
+    punt_run = paste('(', punt_run, sep = ''),
+    punt_run = paste(punt_run, ')', sep = ''),
+    puntrun = paste(`Punt Runs`, punt_run, sep = ' '),
+    fg_pass = as.character(`Field Goal Passes n`),
+    fg_pass = paste('(', fg_pass, sep = ''),
+    fg_pass = paste(fg_pass, ')', sep = ''),
+    fgpass =paste(`Field Goal Passes`, fg_pass, sep = ' '),
+    fg_run = as.character(`Field Goal Runs n`),
+    fg_run = paste('(', fg_run, sep = ''),
+    fg_run = paste(fg_run, ')', sep = ''),
+    fgrun = paste(`Field Goal Runs`, fg_run, sep = ' ')
+  ) %>%
+  select(ydstogo, normalpass, normalrun, puntpass, puntrun, fgpass, fgrun)
+```
+
+### Part 3: Tabling the Data
+
+```{r, echo=F}
+table %>%
+  ungroup() %>%
+  select(ydstogo, normalpass, normalrun, puntpass, puntrun, fgpass, fgrun) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'First Downs on Different Play Types, by Yards to Go (2000-2022)',
+    columns = c(ydstogo, normalpass, normalrun, puntpass, puntrun, fgpass, fgrun)
+  ) %>%
+  cols_align(
+    align = c('center'), columns = everything()
+  ) %>%
+  cols_label(
+    ydstogo = 'Yards to Gain for a First Down',
+    normalpass = 'First Down Rate on Normal Passes (# of Plays)',
+    normalrun = 'First Down Rate on Normal Runs (# of Plays)',
+    puntpass = 'First Down Rate on Fake Punt Passes (# of Plays)',
+    puntrun = 'First Down Rate on Fake Punt Runs (# of Plays)',
+    fgpass = 'First Down Rate on Fake Field Goal Passes (# of Plays)',
+    fgrun = 'First Down Rate on Fake Field Goal Runs (# of Plays)'
+  ) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  ) 
+```
+
+      In this table, with all the "fakes," and normal play calls, comparatively to all plays, fake punt runs at 4th  and 3 and shorter are the most successful play calls, and - albeit a small sample size - fake punt passes from    4th and 4 to 4th and 7 were the next most successful plays. 
+      However, when running a regular play, running plays are the most effective on 4th and 1 - otherwise, passing    plays have higher conversion rates.
+      Even given the small sample size, fake field goals never really yield any "successful" results. 
+##### Here is that same table, with conversion rates - by play - and yards to go scaled.
+
+```{r, echo=F}
+normal %>%
+  select(ydstogo, `Pass Plays`, `Rush Plays`, `Punt Passes`,
+         `Punt Runs`, `Field Goal Passes`, `Field Goal Runs`) %>%
+  gt() %>%
+  tab_spanner(
+    label = 'First Downs on Different Play Types, by Yards to Go (2000-2022)',
+    columns = c(ydstogo, `Pass Plays`, `Rush Plays`, `Punt Passes`, `Punt Runs`, `Field Goal Passes`, `Field Goal Runs`)
+  ) %>%
+  data_color(
+    columns = c(NULL, `Pass Plays`, `Rush Plays`, `Punt Passes`, `Punt Runs`, `Field Goal Passes`, `Field Goal Runs`),
+    colors = scales::col_numeric(
+      palette = c('white', 'yellow2', 'green3'),
+      domain = NULL
+    )) %>%
+  data_color(
+    columns = c(ydstogo),
+    colors = scales::col_numeric(
+      palette = c('green3', '#FFBF00', 'white'),
+      domain = NULL
+    )
+  ) %>%
+  cols_label(
+    ydstogo = 'Yards Required for a First Down', 
+    `Pass Plays` = 'Conversion Rate on Regular Passes',
+    `Rush Plays` = 'Conversion Rate on Regular Runs',
+    `Punt Passes` = 'Conversion Rate on Fake Punt Passes', 
+    `Punt Runs` = 'Conversion Rate on Fake Punt Runs', 
+    `Field Goal Passes` = 'Conversion Rate on Fake Field Goal Passes',
+    `Field Goal Runs` = 'Conversion Rate on Fake Field Goal Runs'
+  ) %>%
+  cols_align(
+    align = c('center'), columns = everything()) %>%
+  opt_table_font(font = 'Roboto Condensed') %>%
+  opt_table_outline() %>%
+  tab_source_note(
+    source_note = 'Jarrett Markman | Data: nflverse'
+  )
+```
+
+### Part 4: Conclusion
+
+      Fake field goals should never really ever be attempted. For one, at the time of the snap the holder or kicker  will already be 7-10 yards from the line of scrimmage, making the chance of conversion that much harder. While   there's a very small sample size for fake field goals, within that sample size there hasn't really been any      evidence that fake field goals are "successful" in terms of converting for a first down. 
+      Fake punts are a really underrated resource that teams can - and should - use more on a game-to-game basis. A  conversion rate of greater than 85% on 4th and 1s fake punt runs is ridiculously high and can essentially "steal" a possession. On 4th and 3 and shorter fake punt runs are more successful than any other play call, with 68% and 75% conversion rates. From 4th and 4 to 4th and 7, fake punt passes can also be used as another resource to      "steal" a possession. While the small sample size (<30 plays) indicates the data may be misleading, the fact that they are successful in a small sample size can be a indicator of its possible future success. 
+      In terms of running "regular" play calls - such as run plays or pass plays - aside from 4th and 1s, passing    plays have much higher conversion rates on 4th downs than running plays. If a team does choose to go for it on a   given 4th down, the best decision would be to run a pass play, except for the occasional 4th and 1 where running  the ball has the best conversion rate. Running the ball from the shotgun could even be a better idea, to create   the element of possibly passing the ball. 
+      The fact that fake punts are so uncommon could play a role in why they are so successful. The small sample size means that running fake punts isn't a "clear" decision with those success rates. However, it does show that      fake punts - both runs and passess - can be used effectively, by lulling the returning team into a false sense of security, you can pretend to punt and "steal" a possession. 
+      If a team goes for it on a regular 4th down, then running or passing the ball is still a viable option. Rushing and passing plays are very successful in short-yardage scenarios (4th and 1 or 4th and 2), and passing plays can also be effective in 4th and 3 or 4th and 4 scenarios. 
